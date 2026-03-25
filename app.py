@@ -9,6 +9,7 @@ comparison and a speed-coloured track map.
 from __future__ import annotations
 
 import datetime
+import hmac
 import os
 import warnings
 from pathlib import Path
@@ -111,6 +112,66 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
+# ── Authentication ───────────────────────────────────────────────────────────
+
+def _check_login() -> None:
+    """Show a login form and block the app until valid credentials are entered.
+
+    Credentials are read from Streamlit secrets:
+
+        [auth]
+        username = "your_username"
+        password = "your_password"
+
+    See `.streamlit/secrets.toml` for the template.
+    """
+    if st.session_state.get("authenticated"):
+        return
+
+    st.markdown(
+        """
+        <style>
+        /* centre the login card */
+        [data-testid="stVerticalBlock"] > div:first-child {
+            max-width: 420px;
+            margin: 8vh auto 0 auto;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.title("🏎️ F1 Telemetry Dashboard")
+    st.subheader("Please log in to continue")
+
+    with st.form("login_form"):
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+        submitted = st.form_submit_button("Log in")
+
+    if submitted:
+        try:
+            valid_user = st.secrets["auth"]["username"]
+            valid_pass = st.secrets["auth"]["password"]
+        except KeyError:
+            st.error(
+                "App credentials are not configured. "
+                "Add an `[auth]` section to `.streamlit/secrets.toml`."
+            )
+            st.stop()
+
+        if hmac.compare_digest(username, valid_user) and hmac.compare_digest(password, valid_pass):
+            st.session_state["authenticated"] = True
+            st.rerun()
+        else:
+            st.error("Invalid username or password.")
+
+    if not st.session_state.get("authenticated"):
+        st.stop()
+
+
+_check_login()
 
 # ── Team colours & logo URLs ─────────────────────────────────────────────────
 TEAM_COLORS: dict[str, str] = {
