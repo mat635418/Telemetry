@@ -68,13 +68,47 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 4. Run the app
+### 4. Configure login credentials
+
+The app requires a username and password before it can be used.
+Credentials are stored in **Streamlit secrets** — never hard-coded in source.
+
+#### Running locally
+
+Create the file `.streamlit/secrets.toml` (already present as a template with placeholder values):
+
+```toml
+[auth]
+username = "your_username"
+password = "your_password"
+```
+
+Replace the placeholder values with your own credentials and save the file.
+`.streamlit/secrets.toml` is listed in `.gitignore` — **do not commit real credentials**.
+
+#### Deploying on Streamlit Community Cloud
+
+1. Open your app in the [Streamlit Community Cloud dashboard](https://share.streamlit.io).
+2. Click **⋮ → Settings → Secrets**.
+3. Paste the following (with your real values) and click **Save**:
+
+```toml
+[auth]
+username = "your_username"
+password = "your_password"
+```
+
+Streamlit injects these secrets as `st.secrets["auth"]["username"]` and
+`st.secrets["auth"]["password"]` at runtime — no file on disk is needed.
+
+### 5. Run the app
 
 ```bash
 streamlit run app.py
 ```
 
 The app opens automatically at **http://localhost:8501**.
+You will be prompted to enter your username and password before accessing the dashboard.
 
 ---
 
@@ -97,10 +131,13 @@ The app opens automatically at **http://localhost:8501**.
 
 ```
 Telemetry/
-├── app.py              # Main Streamlit application
-├── requirements.txt    # Python dependencies
-├── README.md           # This file
-└── f1_cache/           # Auto-created FastF1 cache directory
+├── app.py                              # Main Streamlit application
+├── requirements.txt                    # Python dependencies
+├── README.md                           # This file
+├── .gitignore                          # Excludes cache, venv, and real secrets
+├── .streamlit/
+│   └── secrets.toml.template           # Credentials template (copy → secrets.toml)
+└── f1_cache/                           # Auto-created FastF1 cache directory
 ```
 
 ---

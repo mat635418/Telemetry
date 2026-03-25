@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# FastF1 cache
+f1_cache/
+
+# Streamlit secrets — NEVER commit real credentials.
+# Copy .streamlit/secrets.toml.template → .streamlit/secrets.toml and fill in
+# your credentials locally.  The template (secrets.toml.template) is tracked;
+# the actual secrets file is not.
+.streamlit/secrets.toml
+
+# Virtual environments
+.venv/
+env/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
