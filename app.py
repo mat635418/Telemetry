@@ -43,34 +43,27 @@ st.markdown(
     <style>
     /* ── global ── */
     html, body, [data-testid="stApp"] {
-        background-color: #0d0d0d;
-        color: #e8e8e8;
+        background-color: #f5f5f5;
+        color: #1a1a1a;
         font-family: 'Segoe UI', 'Inter', sans-serif;
     }
     /* ── sidebar ── */
     [data-testid="stSidebar"] {
-        background-color: #111111;
-        border-right: 1px solid #222;
+        background-color: #ffffff;
+        border-right: 1px solid #e0e0e0;
     }
     [data-testid="stSidebar"] label,
     [data-testid="stSidebar"] .stSelectbox label,
     [data-testid="stSidebar"] .stSlider label {
-        color: #cccccc !important;
+        color: #555555 !important;
         font-size: 0.82rem;
         text-transform: uppercase;
         letter-spacing: 0.05em;
     }
-    /* ── selectbox / input ── */
-    .stSelectbox > div > div {
-        background-color: #1a1a1a !important;
-        color: #e8e8e8 !important;
-        border: 1px solid #333 !important;
-        border-radius: 4px;
-    }
     /* ── metric cards ── */
     [data-testid="metric-container"] {
-        background: #161616;
-        border: 1px solid #2a2a2a;
+        background: #ffffff;
+        border: 1px solid #e0e0e0;
         border-radius: 6px;
         padding: 12px 16px;
     }
@@ -90,11 +83,9 @@ st.markdown(
     }
     /* ── headers ── */
     h1 { color: #e10600 !important; letter-spacing: -0.02em; }
-    h2, h3 { color: #e8e8e8 !important; }
+    h2, h3 { color: #1a1a1a !important; }
     /* ── divider ── */
-    hr { border-color: #2a2a2a; }
-    /* ── plotly chart background ── */
-    .js-plotly-plot .plotly { background: transparent !important; }
+    hr { border-color: #e0e0e0; }
     /* ── spinner ── */
     [data-testid="stSpinner"] { color: #e10600; }
     /* ── tabs ── */
@@ -229,6 +220,26 @@ PLOTLY_DARK = dict(
     ),
 )
 
+PLOTLY_LIGHT = dict(
+    paper_bgcolor="#ffffff",
+    plot_bgcolor="#f8f8f8",
+    font=dict(color="#333333", family="Segoe UI, Inter, sans-serif", size=11),
+    xaxis=dict(
+        gridcolor="#e8e8e8",
+        linecolor="#cccccc",
+        tickcolor="#cccccc",
+        showgrid=True,
+        zeroline=False,
+    ),
+    yaxis=dict(
+        gridcolor="#e8e8e8",
+        linecolor="#cccccc",
+        tickcolor="#cccccc",
+        showgrid=True,
+        zeroline=False,
+    ),
+)
+
 # Delta track map: segment colours for losing / gaining time
 DELTA_LOSING_COLOR = "#dc2626"   # red  — driver 1 takes more time here
 DELTA_GAINING_COLOR = "#16a34a"  # green — driver 1 takes less time here
@@ -351,13 +362,13 @@ def build_track_map(lap_tel: pd.DataFrame, color: str, title: str) -> go.Figure:
             name="Start/Finish", showlegend=False,
         )
     )
+    fig.update_layout(**PLOTLY_LIGHT)
     fig.update_layout(
-        title=dict(text=title, font=dict(size=13, color="#cccccc")),
+        title=dict(text=title, font=dict(size=13, color="#555555")),
         xaxis=dict(visible=False, scaleanchor="y", scaleratio=1),
         yaxis=dict(visible=False),
         margin=dict(l=0, r=0, t=30, b=0),
         height=300,
-        **PLOTLY_DARK,
     )
     return fig
 
@@ -452,8 +463,9 @@ def build_delta_track_map(
                 name=lbl, showlegend=True,
             )
         )
+    fig.update_layout(**PLOTLY_LIGHT)
     fig.update_layout(
-        title=dict(text=title, font=dict(size=13, color="#cccccc")),
+        title=dict(text=title, font=dict(size=13, color="#555555")),
         xaxis=dict(visible=False, scaleanchor="y", scaleratio=1),
         yaxis=dict(visible=False),
         margin=dict(l=0, r=0, t=30, b=0),
@@ -461,10 +473,9 @@ def build_delta_track_map(
         legend=dict(
             orientation="h", yanchor="top", y=-0.02,
             xanchor="center", x=0.5,
-            font=dict(size=10, color="#888"),
+            font=dict(size=10, color="#555"),
             bgcolor="rgba(0,0,0,0)",
         ),
-        **PLOTLY_DARK,
     )
     return fig
 
@@ -694,23 +705,23 @@ def build_lap_table(laps: pd.DataFrame, color: str) -> go.Figure:
             go.Table(
                 header=dict(
                     values=[f"<b>{c}</b>" for c in available],
-                    fill_color="#1a1a1a",
-                    font=dict(color="#cccccc", size=11),
+                    fill_color="#f0f0f0",
+                    font=dict(color="#333333", size=11),
                     align="center",
-                    line_color="#333",
+                    line_color="#dddddd",
                 ),
                 cells=dict(
                     values=[disp[c].tolist() for c in available],
-                    fill_color=["#111111", "#141414"] * (len(available) // 2 + 1),
-                    font=dict(color=["#e8e8e8"] * (len(available) - 1) + [color], size=11),
+                    fill_color=["#ffffff", "#f8f8f8"] * (len(available) // 2 + 1),
+                    font=dict(color=["#333333"] * (len(available) - 1) + [color], size=11),
                     align="center",
-                    line_color="#1e1e1e",
+                    line_color="#eeeeee",
                 ),
             )
         ]
     )
     fig.update_layout(
-        paper_bgcolor="#0d0d0d",
+        paper_bgcolor="#ffffff",
         margin=dict(l=0, r=0, t=10, b=0),
         height=min(60 + len(disp) * 28, 500),
     )
@@ -780,14 +791,27 @@ def main() -> None:
     # ── Hero header ──────────────────────────────────────────────────────────
     st.markdown(
         "<h1 style='font-size:2.2rem;margin-bottom:0;'>F1 Telemetry Dashboard</h1>"
-        "<p style='color:#555;margin-top:4px;font-size:0.9rem;'>"
+        "<p style='color:#888;margin-top:4px;font-size:0.9rem;'>"
         "Real-time lap analysis · Speed · Throttle · Braking · Gear · RPM · Delta"
         "</p>",
         unsafe_allow_html=True,
     )
     st.markdown("---")
 
-    if not params["load"]:
+    # Persist the chosen session across reruns so any widget interaction
+    # (driver picker, lap picker, channel selector, tabs…) does not clear
+    # the dashboard.  The button sets the key; subsequent reruns reuse it.
+    if params["load"]:
+        st.session_state["loaded_params"] = {
+            "year": params["year"],
+            "event": params["event"],
+            "session_type": params["session_type"],
+            "session_label": params["session_label"],
+        }
+
+    loaded = st.session_state.get("loaded_params")
+
+    if not loaded:
         st.info(
             "👈  Select a **Season**, **Grand Prix** and **Session** in the sidebar, "
             "then press **Load Session**."
@@ -795,27 +819,27 @@ def main() -> None:
         st.markdown(
             """
             <div style='display:flex;gap:20px;flex-wrap:wrap;margin-top:24px;'>
-            <div style='background:#141414;border:1px solid #2a2a2a;border-radius:8px;
+            <div style='background:#ffffff;border:1px solid #e0e0e0;border-radius:8px;
                         padding:20px;flex:1;min-width:200px;'>
                 <div style='color:#e10600;font-size:1.5rem;'>📊</div>
-                <div style='color:#ccc;font-weight:600;margin-top:8px;'>Lap Telemetry</div>
-                <div style='color:#666;font-size:0.82rem;margin-top:4px;'>
+                <div style='color:#333;font-weight:600;margin-top:8px;'>Lap Telemetry</div>
+                <div style='color:#888;font-size:0.82rem;margin-top:4px;'>
                     Speed, throttle, brake, gear and RPM for every lap of every driver.
                 </div>
             </div>
-            <div style='background:#141414;border:1px solid #2a2a2a;border-radius:8px;
+            <div style='background:#ffffff;border:1px solid #e0e0e0;border-radius:8px;
                         padding:20px;flex:1;min-width:200px;'>
                 <div style='color:#e10600;font-size:1.5rem;'>⚡</div>
-                <div style='color:#ccc;font-weight:600;margin-top:8px;'>Head-to-Head</div>
-                <div style='color:#666;font-size:0.82rem;margin-top:4px;'>
+                <div style='color:#333;font-weight:600;margin-top:8px;'>Head-to-Head</div>
+                <div style='color:#888;font-size:0.82rem;margin-top:4px;'>
                     Compare any two laps with cumulative delta time overlay.
                 </div>
             </div>
-            <div style='background:#141414;border:1px solid #2a2a2a;border-radius:8px;
+            <div style='background:#ffffff;border:1px solid #e0e0e0;border-radius:8px;
                         padding:20px;flex:1;min-width:200px;'>
                 <div style='color:#e10600;font-size:1.5rem;'>🗺️</div>
-                <div style='color:#ccc;font-weight:600;margin-top:8px;'>Track Map</div>
-                <div style='color:#666;font-size:0.82rem;margin-top:4px;'>
+                <div style='color:#333;font-weight:600;margin-top:8px;'>Track Map</div>
+                <div style='color:#888;font-size:0.82rem;margin-top:4px;'>
                     Speed-coloured circuit map generated from GPS telemetry.
                 </div>
             </div>
@@ -826,9 +850,9 @@ def main() -> None:
         return
 
     # ── Load session ─────────────────────────────────────────────────────────
-    with st.spinner(f"Loading {params['year']} {params['event']} — {params['session_label']}…"):
+    with st.spinner(f"Loading {loaded['year']} {loaded['event']} — {loaded['session_label']}…"):
         try:
-            session = load_session(params["year"], params["event"], params["session_type"])
+            session = load_session(loaded["year"], loaded["event"], loaded["session_type"])
         except Exception as exc:
             st.error(f"Could not load session: {exc}")
             return
@@ -1046,9 +1070,9 @@ def main() -> None:
     # ── Footer ────────────────────────────────────────────────────────────────
     st.markdown("---")
     st.markdown(
-        "<p style='color:#333;font-size:0.72rem;text-align:center;'>"
+        "<p style='color:#aaa;font-size:0.72rem;text-align:center;'>"
         "Data provided by <a href='https://github.com/theOehrly/Fast-F1' "
-        "style='color:#555;'>FastF1</a> · "
+        "style='color:#aaa;'>FastF1</a> · "
         "F1, Formula One and all associated marks are trademarks of "
         "Formula One Licensing BV"
         "</p>",
