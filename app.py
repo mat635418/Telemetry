@@ -8,6 +8,7 @@ comparison and a speed-coloured track map.
 
 from __future__ import annotations
 
+import datetime
 import os
 import warnings
 from pathlib import Path
@@ -167,6 +168,10 @@ PLOTLY_DARK = dict(
     ),
 )
 
+# Delta track map: segment colours for losing / gaining time
+DELTA_LOSING_COLOR = "#dc2626"   # red  — driver 1 takes more time here
+DELTA_GAINING_COLOR = "#16a34a"  # green — driver 1 takes less time here
+
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 def _safe_color(team: str, fallback: str = "#e10600") -> str:
@@ -296,6 +301,113 @@ def build_track_map(lap_tel: pd.DataFrame, color: str, title: str) -> go.Figure:
     return fig
 
 
+# ── Delta track map ──────────────────────────────────────────────────────────
+
+def build_delta_track_map(
+    tel1: pd.DataFrame,
+    tel2: pd.DataFrame,
+    label1: str,
+    label2: str,
+    title: str,
+) -> go.Figure:
+    """
+    GPS track map coloured by cumulative time delta.
+    Green segments = driver 1 is gaining time.
+    Red segments   = driver 1 is losing time.
+    """
+    if tel1 is None or tel2 is None or tel1.empty or "X" not in tel1.columns:
+        fig = go.Figure()
+        fig.update_layout(title="Delta track map unavailable", **PLOTLY_DARK)
+        return fig
+
+    def _dist(tel: pd.DataFrame) -> np.ndarray:
+        return tel["Distance"].values if "Distance" in tel.columns else np.arange(len(tel))
+
+    dist1 = _dist(tel1)
+    dist2 = _dist(tel2)
+    s1 = tel1["Speed"].values.astype(float)
+    s2_interp = np.interp(dist1, dist2, tel2["Speed"].values.astype(float),
+                          left=np.nan, right=np.nan)
+
+    dd = dist1 - np.concatenate([[dist1[0]], dist1[:-1]])
+    dt = np.where(
+        (s1 > 0) & (~np.isnan(s2_interp)) & (s2_interp > 0),
+        dd * (1 / s1 - 1 / s2_interp),
+        0.0,
+    )
+    delta = np.cumsum(dt) * 3.6
+    # Positive delta = driver 1 is slower here (1/s1 > 1/s2 ⟹ s1 < s2)
+
+    x = tel1["X"].values
+    y = tel1["Y"].values
+    delta_max = max(float(np.abs(delta).max()), 1e-6)
+
+    fig = go.Figure()
+    # grey base
+    fig.add_trace(
+        go.Scatter(
+            x=x, y=y, mode="lines",
+            line=dict(color="#2a2a2a", width=10),
+            hoverinfo="skip", showlegend=False,
+        )
+    )
+    # delta-coloured overlay
+    for i in range(len(x) - 1):
+        d = delta[i]
+        norm = float(np.clip(abs(d) / delta_max, 0, 1))
+        if d > 0:   # losing time — red (drv1 slower: 1/s1 > 1/s2)
+            r_base = int(220 * norm + 35 * (1 - norm))
+            seg_color = f"rgb({r_base},{int(30*(1-norm))},{int(30*(1-norm))})"
+        else:       # gaining time — green (drv1 faster: 1/s1 < 1/s2)
+            g_base = int(200 * norm + 30 * (1 - norm))
+            seg_color = f"rgb({int(30*(1-norm))},{g_base},{int(30*(1-norm))})"
+        fig.add_trace(
+            go.Scatter(
+                x=[x[i], x[i + 1]], y=[y[i], y[i + 1]],
+                mode="lines",
+                line=dict(color=seg_color, width=5),
+                hovertemplate=f"Δ: {delta[i]:+.3f}s<extra></extra>",
+                showlegend=False,
+            )
+        )
+    # start dot
+    fig.add_trace(
+        go.Scatter(
+            x=[x[0]], y=[y[0]], mode="markers",
+            marker=dict(color="#ffffff", size=10, symbol="circle",
+                        line=dict(color="#000000", width=2)),
+            showlegend=False,
+        )
+    )
+    # legend labels
+    for colour, lbl in [
+        (DELTA_LOSING_COLOR, f"← {label1} losing"),
+        (DELTA_GAINING_COLOR, f"← {label1} gaining"),
+    ]:
+        fig.add_trace(
+            go.Scatter(
+                x=[None], y=[None], mode="lines",
+                line=dict(color=colour, width=4),
+                name=lbl, showlegend=True,
+            )
+        )
+    fig.update_layout(
+        title=dict(text=title, font=dict(size=13, color="#cccccc")),
+        xaxis=dict(visible=False, scaleanchor="y", scaleratio=1),
+        yaxis=dict(visible=False),
+        margin=dict(l=0, r=0, t=30, b=0),
+        height=300,
+        legend=dict(
+            orientation="h", yanchor="top", y=-0.02,
+            xanchor="center", x=0.5,
+            font=dict(size=10, color="#888"),
+            bgcolor="rgba(0,0,0,0)",
+        ),
+        **PLOTLY_DARK,
+    )
+    return fig
+
+
 # ── Telemetry charts ─────────────────────────────────────────────────────────
 
 def build_telemetry_figure(
@@ -317,24 +429,26 @@ def build_telemetry_figure(
         "Brake": "Brake",
         "nGear": "Gear",
         "RPM": "RPM",
-        "DRS": "DRS",
+        "DRS": "DRS / Override",
     }
 
     show_delta = tel2 is not None
-    rows = (1 if show_delta else 0) + len(channels)
+    # Rows: [dominance strip, delta] when comparing + one row per channel
+    rows = (2 if show_delta else 0) + len(channels)
     if rows == 0:
         return go.Figure()
 
     row_heights = []
     if show_delta:
-        row_heights.append(0.15)
+        row_heights.append(0.04)   # dominance strip — very thin
+        row_heights.append(0.18)   # delta row
     for _ in channels:
-        row_heights.append(1.0 / len(channels) if channels else 1.0)
+        row_heights.append(1.0)
     # normalise
     total = sum(row_heights)
     row_heights = [h / total for h in row_heights]
 
-    subplot_titles = (["Δ Delta (s)"] if show_delta else []) + [
+    subplot_titles = (["", "Δ Delta (s)"] if show_delta else []) + [
         channel_labels.get(c, c) for c in channels
     ]
 
@@ -353,23 +467,53 @@ def build_telemetry_figure(
 
     dist1 = _dist(tel1)
 
-    # ── delta row ───────────────────────────────────────────────────────────
+    # ── dominance strip + delta rows ────────────────────────────────────────
     delta_row_offset = 0
     if show_delta and tel2 is not None:
-        delta_row_offset = 1
+        delta_row_offset = 2   # row 1 = dominance, row 2 = delta
         dist2 = _dist(tel2)
+
         if "Speed" in tel1.columns and "Speed" in tel2.columns:
-            # Interpolate tel2 speed onto tel1 distance grid
-            s2_interp = np.interp(dist1, dist2, tel2["Speed"].values,
-                                  left=np.nan, right=np.nan)
             s1 = tel1["Speed"].values.astype(float)
-            # Cumulative time delta via numerical integration
+            s2_interp = np.interp(dist1, dist2, tel2["Speed"].values.astype(float),
+                                  left=np.nan, right=np.nan)
+
+            # ── dominance strip (row 1) ──────────────────────────────────
+            faster_mask = np.where(
+                (~np.isnan(s2_interp)) & (s1 > s2_interp), 1.0, 0.0
+            )
+            y_drv1 = np.where(faster_mask == 1.0, 1.0, np.nan)
+            y_drv2 = np.where(faster_mask == 0.0, 1.0, np.nan)
+
+            fig.add_trace(
+                go.Scatter(
+                    x=dist1, y=y_drv1,
+                    fill="tozeroy", mode="none",
+                    fillcolor=color1 + "cc",
+                    name=f"{label1} faster",
+                    showlegend=False, hoverinfo="skip",
+                ),
+                row=1, col=1,
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=dist1, y=y_drv2,
+                    fill="tozeroy", mode="none",
+                    fillcolor=color2 + "cc",
+                    name=f"{label2} faster",
+                    showlegend=False, hoverinfo="skip",
+                ),
+                row=1, col=1,
+            )
+
+            # ── cumulative delta (row 2) ─────────────────────────────────
+            dd = dist1 - np.concatenate([[dist1[0]], dist1[:-1]])
             dt_speed = np.where(
                 (s1 > 0) & (~np.isnan(s2_interp)) & (s2_interp > 0),
-                (dist1 - np.concatenate([[dist1[0]], dist1[:-1]])) * (1 / s1 - 1 / s2_interp),
+                dd * (1 / s1 - 1 / s2_interp),
                 0.0,
             )
-            delta = np.cumsum(dt_speed) * 3.6  # convert to seconds (m/(km/h) * 3.6 = s)
+            delta = np.cumsum(dt_speed) * 3.6
         else:
             delta = np.zeros_like(dist1)
 
@@ -380,9 +524,9 @@ def build_telemetry_figure(
                 name=f"Δ {label2}",
                 hovertemplate="Distance: %{x:.0f} m<br>Delta: %{y:.3f} s<extra></extra>",
             ),
-            row=1, col=1,
+            row=2, col=1,
         )
-        fig.add_hline(y=0, line=dict(color="#555", dash="dash", width=1), row=1, col=1)
+        fig.add_hline(y=0, line=dict(color="#555", dash="dash", width=1), row=2, col=1)
 
     # ── telemetry channels ───────────────────────────────────────────────────
     for ch_idx, channel in enumerate(channels):
@@ -431,8 +575,10 @@ def build_telemetry_figure(
                 trace.line.shape = "hv"  # type: ignore[attr-defined]
 
     # ── shared styling ───────────────────────────────────────────────────────
+    # Fixed 650 px keeps the chart within one viewport even when all
+    # 6 channels + dominance strip + delta row are active simultaneously.
     fig.update_layout(
-        height=120 * rows + 80,
+        height=650,
         paper_bgcolor="#0d0d0d",
         plot_bgcolor="#111111",
         font=dict(color="#cccccc", family="Segoe UI, Inter, sans-serif", size=11),
@@ -455,6 +601,10 @@ def build_telemetry_figure(
             gridcolor="#1e1e1e", linecolor="#333", showgrid=True, zeroline=False,
             row=i, col=1,
         )
+    # dominance strip: hide y-axis ticks/labels entirely
+    if show_delta:
+        fig.update_yaxes(showticklabels=False, showgrid=False,
+                         range=[0, 1], row=1, col=1)
     # x-axis label only on last row
     fig.update_xaxes(title_text="Distance (m)", row=rows, col=1)
 
@@ -518,7 +668,7 @@ def sidebar() -> dict:
 
     year = st.sidebar.selectbox(
         "Season",
-        options=list(range(2024, 2018, -1)),
+        options=list(range(datetime.datetime.now().year, 2018, -1)),
         index=0,
     )
 
@@ -650,26 +800,43 @@ def main() -> None:
                 lap1_num = int(fl["LapNumber"])
 
     compare_on = st.checkbox("Compare with another driver / lap", value=False)
+    vs_session_best = compare_on and st.checkbox(
+        "🏆 Auto: vs Session Best (entire grid)", value=False, key="vsb"
+    )
 
     drv2, lap2_num = None, None
     if compare_on:
-        with col_d:
-            drv2 = st.selectbox("Compare Driver", drivers, key="drv2",
-                                index=min(1, len(drivers) - 1))
-        laps2 = session.laps.pick_drivers(drv2)
-        valid_laps2 = laps2[laps2["LapTime"].notna()]["LapNumber"].astype(int).tolist()
-        with col_e:
-            if valid_laps2:
-                lap2_num = st.selectbox("Lap", valid_laps2, key="lap2",
-                                        index=len(valid_laps2) - 1)
-            else:
-                st.warning(f"No timed laps for {drv2}.")
+        if vs_session_best:
+            try:
+                _sb = session.laps.pick_fastest()
+                drv2 = str(_sb["Driver"])
+                lap2_num = int(_sb["LapNumber"])
+                laps2 = session.laps.pick_drivers(drv2)
+                _sb_time = format_lap_time(_sb["LapTime"])
+                st.info(
+                    f"🏆 Session best: **{drv2}** · Lap **{lap2_num}** · {_sb_time}"
+                )
+            except Exception:
+                st.warning("Could not determine session fastest lap.")
                 compare_on = False
-        with col_f:
-            if compare_on and st.button("⚡ Fastest", key="fast2", use_container_width=True):
-                fl2 = laps2.pick_fastest()
-                if fl2 is not None and not pd.isna(fl2["LapNumber"]):
-                    lap2_num = int(fl2["LapNumber"])
+        else:
+            with col_d:
+                drv2 = st.selectbox("Compare Driver", drivers, key="drv2",
+                                    index=min(1, len(drivers) - 1))
+            laps2 = session.laps.pick_drivers(drv2)
+            valid_laps2 = laps2[laps2["LapTime"].notna()]["LapNumber"].astype(int).tolist()
+            with col_e:
+                if valid_laps2:
+                    lap2_num = st.selectbox("Lap", valid_laps2, key="lap2",
+                                            index=len(valid_laps2) - 1)
+                else:
+                    st.warning(f"No timed laps for {drv2}.")
+                    compare_on = False
+            with col_f:
+                if compare_on and st.button("⚡ Fastest", key="fast2", use_container_width=True):
+                    fl2 = laps2.pick_fastest()
+                    if fl2 is not None and not pd.isna(fl2["LapNumber"]):
+                        lap2_num = int(fl2["LapNumber"])
 
     st.markdown("---")
 
@@ -767,21 +934,42 @@ def main() -> None:
             st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
     with tab_map:
-        map_cols = st.columns(2 if compare_on and tel2 is not None else 1)
-        with map_cols[0]:
-            if tel1 is not None:
-                fig_map1 = build_track_map(tel1, color1,
-                                           f"{drv1} · Lap {lap1_num} · Speed Map")
-                st.plotly_chart(fig_map1, use_container_width=True,
-                                config={"displayModeBar": False})
-            else:
-                st.info("No telemetry for track map.")
-        if compare_on and tel2 is not None and len(map_cols) > 1:
-            with map_cols[1]:
-                fig_map2 = build_track_map(tel2, color2,
-                                           f"{drv2} · Lap {lap2_num} · Speed Map")
-                st.plotly_chart(fig_map2, use_container_width=True,
-                                config={"displayModeBar": False})
+        map_mode_cols = st.columns([2, 1]) if compare_on and tel2 is not None else [None]
+        if compare_on and tel2 is not None:
+            with map_mode_cols[1]:
+                map_mode = st.radio(
+                    "Colour by",
+                    ["Speed", "Time Delta"],
+                    horizontal=True,
+                    key="map_mode",
+                )
+        else:
+            map_mode = "Speed"
+
+        if map_mode == "Time Delta" and compare_on and tel1 is not None and tel2 is not None:
+            fig_delta_map = build_delta_track_map(
+                tel1, tel2,
+                f"{drv1}", f"{drv2}",
+                f"{drv1} vs {drv2} · Lap {lap1_num} vs {lap2_num} · Time Delta Map",
+            )
+            st.plotly_chart(fig_delta_map, use_container_width=True,
+                            config={"displayModeBar": False})
+        else:
+            map_cols = st.columns(2 if compare_on and tel2 is not None else 1)
+            with map_cols[0]:
+                if tel1 is not None:
+                    fig_map1 = build_track_map(tel1, color1,
+                                               f"{drv1} · Lap {lap1_num} · Speed Map")
+                    st.plotly_chart(fig_map1, use_container_width=True,
+                                    config={"displayModeBar": False})
+                else:
+                    st.info("No telemetry for track map.")
+            if compare_on and tel2 is not None and len(map_cols) > 1:
+                with map_cols[1]:
+                    fig_map2 = build_track_map(tel2, color2,
+                                               f"{drv2} · Lap {lap2_num} · Speed Map")
+                    st.plotly_chart(fig_map2, use_container_width=True,
+                                    config={"displayModeBar": False})
 
     with tab_laps:
         st.markdown(f"#### {full1} — all laps")

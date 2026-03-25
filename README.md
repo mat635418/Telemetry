@@ -135,7 +135,7 @@ fastf1.get_session().load()   ← download laps + telemetry
 | Brake | bool/float | Brake pedal application |
 | nGear | 1–8 | Current gear |
 | RPM | rpm | Engine revolutions per minute |
-| DRS | 0/1/8/10/12/14 | DRS status (>9 = open) |
+| DRS / Override | 0/1/8/10/12/14 | DRS status (>9 = open) or 2026 Manual Override Mode |
 
 ### Delta Time Calculation
 
